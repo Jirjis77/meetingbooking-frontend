@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mötesbokning</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-gray-100 p-6 font-sans">
+  <div class="max-w-3xl mx-auto bg-white rounded-2xl shadow-md p-6">
+    <h1 class="text-3xl font-bold mb-6 text-center">📅 Mötesbokning</h1>
+
+    <form id="bookingForm" class="grid grid-cols-1 gap-4 mb-8">
+      <div>
+        <label class="font-semibold">Titel</label>
+        <input type="text" id="title" placeholder="Titel på mötet" class="p-2 border rounded w-full" required />
+      </div>
+
+      <div>
+        <label class="font-semibold">Organisatör</label>
+        <input type="text" id="organizer" placeholder="Ditt namn" class="p-2 border rounded w-full" required />
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="font-semibold">Starttid</label>
+          <input type="datetime-local" id="startTime" class="p-2 border rounded w-full" required />
+        </div>
+        <div>
+          <label class="font-semibold">Sluttid</label>
+          <input type="datetime-local" id="endTime" class="p-2 border rounded w-full" required />
+        </div>
+      </div>
+
+      <div>
+        <label class="font-semibold">Plats</label>
+        <input type="text" id="location" placeholder="Ex: Kontor eller Teams" class="p-2 border rounded w-full" required />
+      </div>
+
+      <div>
+        <label class="font-semibold">Deltagare</label>
+        <input type="text" id="participants" placeholder="E-postadresser, komma-separerade" class="p-2 border rounded w-full" />
+        <p class="text-xs text-gray-500 mt-1">Ange e-postadresser separerade med kommatecken.</p>
+      </div>
+
+      <div>
+        <label class="font-semibold">Beskrivning</label>
+        <textarea id="description" placeholder="Vad handlar mötet om?" class="p-2 border rounded w-full"></textarea>
+      </div>
+
+      <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold p-2 rounded shadow">Boka möte</button>
+    </form>
+
+    <h2 class="text-2xl font-bold mb-4">📋 Bokade möten</h2>
+    <ul id="meetingList" class="space-y-4"></ul>
+  </div>
+
+  <script>
+    const apiUrl = "https://meetingbookingapi.azurewebsites.net/api/meetings";
+
+    async function loadMeetings() {
+      try {
+        const res = await fetch(apiUrl);
+        const meetings = await res.json();
+        const list = document.getElementById("meetingList");
+        list.innerHTML = "";
+
+        meetings.forEach(m => {
+          const li = document.createElement("li");
+          li.className = "border rounded p-4 bg-gray-50 shadow-sm";
+          const start = new Date(m.startTime).toLocaleString();
+          const end = new Date(m.endTime).toLocaleString();
+          const isTeams = m.location.toLowerCase().includes("teams");
+          const participants = Array.isArray(m.participants) ? m.participants.join(', ') : '';
+
+          li.innerHTML = `
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="text-lg font-bold">${m.title}</h3>
+              <div class="flex items-center gap-2">
+                ${isTeams ? '<img src="https://www.svgrepo.com/show/448240/microsoft-teams.svg" alt="Teams" class="h-6 w-6">' : ''}
+                <button onclick="deleteMeeting(${m.id})" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm">Ta bort</button>
+              </div>
+            </div>
+            <p class="text-sm text-gray-700">👤 <strong>Organisatör:</strong> ${m.organizer}</p>
+            <p class="text-sm text-gray-700">🕒 <strong>Start:</strong> ${start}</p>
+            <p class="text-sm text-gray-700">🕓 <strong>Slut:</strong> ${end}</p>
+            <p class="text-sm text-gray-700">📍 <strong>Plats:</strong> ${m.location}</p>
+            ${participants ? `<p class="text-sm text-gray-700">👥 <strong>Deltagare:</strong> ${participants}</p>` : ''}
+            ${m.description ? `<p class="text-sm text-gray-700">📝 <strong>Beskrivning:</strong> ${m.description}</p>` : ''}
+          `;
+          list.appendChild(li);
+        });
+      } catch (error) {
+        alert("❌ Kunde inte ladda möten:\n" + error.message);
+      }
+    }
+
+    async function deleteMeeting(id) {
+      if (confirm("Vill du ta bort detta möte?")) {
+        const res = await fetch(`${apiUrl}/${id}`, { method: "DELETE" });
+        if (res.ok) loadMeetings();
+        else alert("Kunde inte ta bort mötet.");
+      }
+    }
+
+    document.getElementById("bookingForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const meeting = {
+        title: document.getElementById("title").value,
+        organizer: document.getElementById("organizer").value,
+        startTime: document.getElementById("startTime").value,
+        endTime: document.getElementById("endTime").value,
+        location: document.getElementById("location").value,
+        participants: document.getElementById("participants").value
+                          .split(',')
+                          .map(p => p.trim())
+                          .filter(p => p),
+        description: document.getElementById("description").value
+      };
+
+      try {
+        const res = await fetch(apiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(meeting)
+        });
+
+        const text = await res.text();
+
+        if (res.ok) {
+          alert("✅ Möte bokat!");
+          e.target.reset();
+          loadMeetings();
+        } else if (res.status === 409) {
+          alert("❌ Tiden är redan bokad! Välj en annan tid.");
+        } else {
+          alert("❌ Fel vid bokning:\n" + text);
+        }
+      } catch (error) {
+        alert("❌ Ett oväntat fel inträffade:\n" + error.message);
+      }
+    });
+
+    loadMeetings();
+  </script>
+</body>
+</html>
